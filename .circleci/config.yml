@@ -1,0 +1,39 @@
+version: 2.1
+executors:
+  builder:
+    environment:
+      APP_NAME: libpostal-rest
+    working_directory: ~/code
+    docker:
+      - image: eu.gcr.io/bulbenrg/builder:node12
+        auth:
+          username: _json_key
+          password: $GCP_SERVICE_KEY
+
+jobs:
+  build_n_push:
+    executor: builder
+    steps:
+      - checkout
+      - run:
+          name: Authenticate with Google Cloud
+          command: ./.circleci/gcloud-auth.sh
+      - setup_remote_docker
+      - run:
+          name: Build image
+          command: docker build -t libpostal-rest -t eu.gcr.io/bulbenrg/libpostal-rest .
+      - run:
+          name: Push to registry
+          command: docker push eu.gcr.io/bulbenrg/libpostal-rest
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - approve_build_n_push:
+          type: approval
+
+      - build_n_push:
+          context: bulbenrg-default
+          requires:
+            - approve_build_n_push
