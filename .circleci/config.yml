@@ -13,6 +13,8 @@ executors:
 jobs:
   build_n_push:
     executor: builder
+    environment:
+      SKIP_CONFIG_CHECK: "true"
     steps:
       - checkout
       - run:
@@ -25,6 +27,22 @@ jobs:
       - run:
           name: Push to registry
           command: docker push eu.gcr.io/bulbenrg/libpostal-rest
+  deploy:
+    executor: builder
+    parameters:
+      namespace:
+        type: string
+    steps:
+      - checkout
+      - run:
+          name: Authenticating with Google Cloud
+          command: ./.circleci/gcloud-auth.sh
+      - run:
+          name: Deploying to << parameters.namespace >>
+          command: kubectl apply -f k8s/manifest.yml -n << parameters.namespace >>
+      - run:
+          name: Awaiting rollout
+          command: kubectl -n << parameters.namespace >> rollout status deploy libpostal
 
 workflows:
   version: 2
@@ -32,8 +50,32 @@ workflows:
     jobs:
       - approve_build_n_push:
           type: approval
+      - approve_staging_deploy:
+          type: approval
+      - approve_prod_deploy:
+          type: approval
+          filters:
+            branches:
+              only: master
 
       - build_n_push:
           context: bulbenrg-default
           requires:
             - approve_build_n_push
+
+      - deploy:
+          name: deploy_staging
+          namespace: default
+          context: bulbenrg-default
+          requires:
+            - approve_staging_deploy
+
+      - deploy:
+          name: deploy_prod
+          namespace: prod
+          context: bulbenrg-default
+          requires:
+            - approve_prod_deploy
+          filters:
+            branches:
+              only: master
