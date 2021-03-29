@@ -87,10 +87,6 @@ metadata:
   name: libpostal
   labels:
     app: libpostal
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: libpostal.credit-check.cluster2.bulbenrg.bulb.internal
-    external-dns.alpha.kubernetes.io/nodeport-target: internal-ip
-    external-dns.alpha.kubernetes.io/access: private
 spec:
   externalTrafficPolicy: Cluster
   ports:
