@@ -1,20 +1,81 @@
-FROM ubuntu:16.04
+FROM golang:1.17.8-buster AS builder
 
-ARG COMMIT
-ENV COMMIT ${COMMIT:-master}
+ARG LIBPOSTAL_UPSTREAM
+ENV LIBPOSTAL_UPSTREAM ${LIBPOSTAL_UPSTREAM:-github.com/openvenues/libpostal}
+
+ARG LIBPOSTAL_REST_UPSTREAM
+ENV LIBPOSTAL_REST_UPSTREAM ${LIBPOSTAL_REST_UPSTREAM:-github.com/johnlonganecker/libpostal-rest}
+
+ARG LIBPOSTAL_COMMIT
+ENV LIBPOSTAL_COMMIT ${LIBPOSTAL_COMMIT:-master}
+
+ARG LIBPOSTAL_REST_RELEASE
+ENV LIBPOSTAL_REST_RELEASE ${LIBPOSTAL_REST_RELEASE:-1.1.0}
+
 ENV DEBIAN_FRONTEND noninteractive
 
-RUN apt-get update && apt-get install -y \
-    autoconf automake build-essential curl git libsnappy-dev libtool pkg-config
+RUN set -eux; \
+    apt-get update;  \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        libsnappy-dev \
+        pkg-config \
+        autoconf \
+        automake \
+        libtool \
+        curl \
+        git \
+    ; \
+    rm -rf /var/lib/apt/lists/*
 
-RUN git clone https://github.com/openvenues/libpostal -b $COMMIT
+RUN set -eux; \
+    git clone \
+        "https://${LIBPOSTAL_UPSTREAM}" \
+        --branch "${LIBPOSTAL_COMMIT}" \
+        --depth=1 \
+        --single-branch \
+        /usr/src/libpostal \
+    ; \
+    cd /usr/src/libpostal; \
+    ./bootstrap.sh; \
+    mkdir --parents /opt/libpostal_data; \
+    # TODO Libpostal issue on mac m1 https://github.com/openvenues/libpostal/issues/585
+    ./configure --datadir=/opt/data --prefix=/libpostal; \
+    make --jobs=$(nproc); \
+    make install DESTDIR=/libpostal; \
+    ldconfig -v
 
-COPY ./*.sh /libpostal/
+RUN set -eux; \
+    mv /libpostal /_libpostal; \
+    mv /_libpostal/libpostal /libpostal; \
+    cd /libpostal; \
+    export GOPATH=/usr/src/libpostal/workspace; \
+    export PKG_CONFIG_PATH=/usr/src/libpostal; \
+    pkg-config --cflags libpostal; \
+    go install "${LIBPOSTAL_REST_UPSTREAM}@v${LIBPOSTAL_REST_RELEASE}"; \
+    mv /usr/src/libpostal/workspace /libpostal/workspace; \
+    chmod a+x /libpostal/bin/* /libpostal/workspace/bin/*; \
+    rm -rf /usr/src/libpostal
+
+FROM busybox:glibc
 
 WORKDIR /libpostal
-RUN ./build_libpostal.sh
-RUN ./build_libpostal_rest.sh
 
-EXPOSE 8080
+ARG LOG_LEVEL
+ENV LOG_LEVEL "${LOG_LEVEL:-info}"
 
-CMD /libpostal/workspace/bin/libpostal-rest
+ARG LOG_STRUCTURED
+ENV LOG_STRUCTURED "${LOG_STRUCTURED:-true}"
+
+ARG LISTEN_PORT
+ENV LISTEN_PORT "${LISTEN_PORT:-8080}"
+
+COPY --from=builder /libpostal/bin/* /usr/bin/
+COPY --from=builder /libpostal/workspace/bin/* /usr/bin/
+COPY --from=builder /libpostal/lib/* /usr/lib/
+COPY --from=builder /libpostal/include/* /usr/lib/
+COPY --from=builder /opt/data /opt/data
+
+EXPOSE 8080/tcp
+
+CMD ["/usr/bin/libpostal-rest"]

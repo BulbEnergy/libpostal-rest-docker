@@ -9,27 +9,23 @@ with libpostal and [libpostal-rest](https://github.com/johnlonganecker/libpostal
 that makes it easy interact with libpostal.
 
 ## Build image and start up container
-```
+
+```sh
 docker build -t libpostal-rest .
 docker run -d -p 8080:8080 libpostal-rest
 ```
 
-## Build image from specific libpostal git hash
-```
-docker build -t libpostal-rest --build-arg COMMIT=e816b4f77e8c6a7f35207ca77282ffab3712c5b6 .
-```
+On M1 macbook:
 
-**Works with branch names as well**
+```sh
+docker build -t libpostal-rest --platform linux/x86_64 .
+docker run -d -p 8081:8080 --platform linux/x86_64 libpostal-rest
 ```
-docker build -t libpostal-rest --build-arg COMMIT=parser-data .
-```
-
-If a commit/hash is not specified it defaults to the **master** branch
-
-## Feature Requests and Bugs
-File a Github issue
-
-## Contributing
-Just submit a pull request :D
 
 See REST API [here](https://github.com/johnlonganecker/libpostal-rest) 
+
+## Examples
+
+```sh
+curl -k -X POST -d '{"query": "100 main st buffalo ny"}' https://localhost:8081/parser
+```
